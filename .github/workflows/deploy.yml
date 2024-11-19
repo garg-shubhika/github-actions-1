@@ -3,39 +3,60 @@ name: Deploy Hello World
 on:
   pull_request:
     branches:
-      main
+      - main  # Trigger on PRs to the main branch
   push:
     branches:
-      main
+      - main  # Trigger on push to the main branch (to deploy to production)
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Check out the code
         uses: actions/checkout@v3
-      
-      - name: Set up node.js
+
+      - name: Set up Node.js (if needed)
         uses: actions/setup-node@v3
         with:
           node-version: '16'
 
+      - name: Build the site (if any)
+        run: |
+          mkdir -p public
+          cp -r * public/  # Copy files to a `public/` directory for deployment
+
       - name: Deploy Preview (on Pull Request)
         if: github.event_name == 'pull_request'
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./
-          publish_branch: gh-pages-preview
-          cname: ""
-        env:
-          GITHUB_ENV: "Preview"
-      - name: Deploy to GitHub Pages
-        if: github.event_name == 'push' and github.ref == 'refs/head/main'
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./
-          publish_branch: gh-pages
-          cname: ""
-  
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          BRANCH_NAME=gh-pages-pr-${PR_NUMBER}
+          echo "Deploying to preview branch: $BRANCH_NAME"
+          
+          # Create a temporary branch for PR preview
+          git checkout --orphan $BRANCH_NAME
+          git rm -rf .
+          cp -r * public/  # Copy files to public for deployment
+          git add public/
+          git commit -m "Deploy preview for PR #$PR_NUMBER"
+          git push origin $BRANCH_NAME
+
+          # Generate Preview URL for the PR
+          PREVIEW_URL="https://${{ github.repository_owner }}.github.io/${{ github.repository_name }}/gh-pages-pr-${PR_NUMBER}/"
+          echo "Preview URL: $PREVIEW_URL"
+          
+          # Add a comment to the PR with the preview URL
+          curl -X POST \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          -d '{"body": "Here is the preview for your PR: '"${PREVIEW_URL}"'"}' \
+          "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
+
+      - name: Deploy to GitHub Pages (on Merge)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "Deploying to GitHub Pages for production..."
+          git checkout gh-pages  # Use gh-pages branch for production
+          cp -r * public/
+          git add public/
+          git commit -m "Deploy to production"
+          git push origin gh-pages
