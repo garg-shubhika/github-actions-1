@@ -1,0 +1,41 @@
+name: Deploy Hello World
+
+on:
+  pull_request:
+    branches:
+      main
+  push:
+    branches:
+      main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v3
+      
+      - name: Set up node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+
+      - name: Deploy Preview (on Pull Request)
+        if: github.event_name == 'pull_request'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./
+          publish_branch: gh-pages-preview
+          cname: ""
+        env:
+          GITHUB_ENV: "Preview"
+      - name: Deploy to GitHub Pages
+        if: github.event_name == 'push' and github.ref == 'refs/head/main'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./
+          publish_branch: gh-pages
+          cname: ""
+  
